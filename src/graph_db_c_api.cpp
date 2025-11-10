@@ -9,6 +9,7 @@
 #include <cstring>
 #include <cstddef>      // dla size_t
 #include <stdexcept>
+#include <cstdio>       // for printf
 #include "json.hpp"     // nlohmann::json
 
 using namespace graphdb;
@@ -87,24 +88,34 @@ Box* graphdb_init(const char* boxName)
 
 void graphdb_save_nodes(Box* box, const char* jsonData)
 {
-    if (!box || !jsonData)
-        std::cerr << "graphdb_save_nodes: Error - box or jsonData is NULL.\n";
+    if (!box || !jsonData) {
+        printf("graphdb_save_nodes: Error - box or jsonData is NULL.\n");
+        fflush(stdout);
         return;
+    }
 
     try
     {
         vector<Node> nodes = parse_nodes_from_json(jsonData);
-        std::cerr << "graphdb_save_nodes: Successfully parsed " << nodes.size() << " nodes.\n";
+        printf("graphdb_save_nodes: Successfully parsed %zu nodes.\n", nodes.size());
+        fflush(stdout);
         box->storage->saveNodeChunk(nodes);
-        std::cerr << "graphdb_save_nodes: saveNodeChunk finished successfully.\n";
+        printf("graphdb_save_nodes: saveNodeChunk finished successfully.\n");
+        fflush(stdout);
+        // Rebuild index after saving nodes so they can be loaded
+        box->storage->buildNodeIndex();
+        printf("graphdb_save_nodes: Node index rebuilt.\n");
+        fflush(stdout);
     }
     catch (const std::exception& e)
     {
-        std::cerr << "graphdb_save_nodes: CRITICAL ERROR - Exception caught: " << e.what() << "\n";
+        printf("graphdb_save_nodes: CRITICAL ERROR - Exception caught: %s\n", e.what());
+        fflush(stdout);
     }
     catch (...)
     {
-        std::cerr << "graphdb_save_nodes: CRITICAL ERROR - Unknown exception caught.\n";
+        printf("graphdb_save_nodes: CRITICAL ERROR - Unknown exception caught.\n");
+        fflush(stdout);
     }
 }
 
@@ -120,25 +131,39 @@ void graphdb_save_edges(Box* box, const char* jsonData)
     }
     catch (...)
     {
-        // możesz tu dodać logowanie
     }
 }
 
 const char* graphdb_load_node(Box* box, const char* nodeId)
 {
-    if (!box || !nodeId)
+    if (!box || !nodeId) {
+        printf("graphdb_load_node: Error - box or nodeId is NULL.\n");
+        fflush(stdout);
         return nullptr;
+    }
 
     try
     {
+        printf("graphdb_load_node: Attempting to load node with ID: %s\n", nodeId);
+        fflush(stdout);
         Node node = box->storage->loadNodeById(nodeId);
         string jsonStr = node.to_json();
+        printf("graphdb_load_node: Successfully loaded node, JSON size: %zu\n", jsonStr.size());
+        fflush(stdout);
         char* result = (char*)malloc(jsonStr.size() + 1);
         strcpy(result, jsonStr.c_str());
         return result;
     }
+    catch (const std::exception& e)
+    {
+        printf("graphdb_load_node: ERROR - Exception caught: %s\n", e.what());
+        fflush(stdout);
+        return nullptr;
+    }
     catch (...)
     {
+        printf("graphdb_load_node: ERROR - Unknown exception caught.\n");
+        fflush(stdout);
         return nullptr;
     }
 }

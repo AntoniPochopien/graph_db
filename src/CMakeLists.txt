@@ -21,6 +21,8 @@ set(SOURCES
     graph_db_c_api.cpp
   )
 
+find_library(log-lib log)  # szuka liblog.so
+
 # ===============================
 # Create a shared library (.so for Android / .a for iOS)
 # ===============================

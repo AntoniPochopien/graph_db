@@ -1,6 +1,6 @@
 name: graph_db
 description: "A new Flutter FFI plugin project."
-version: 0.0.1
+version: 0.0.4
 homepage:
 
 environment:

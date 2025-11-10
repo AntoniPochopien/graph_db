@@ -24,12 +24,6 @@ class _MyAppState extends State<MyApp> {
   void initState() {
     super.initState();
     x();
-    // _box.saveNodes(jsonEncode({
-    //   "id":0,
-    //   "test":"test"
-    // }));
-    // final x = _box.loadNode(0.toString());
-    // print(x);
   }
 
   Future<void> x() async {
@@ -38,7 +32,7 @@ class _MyAppState extends State<MyApp> {
       {'id': "1", 'properties': {'test': 'test'}}
     ]));
     final x =_box.loadNode("1");
-    print(x);
+    print('fds: $x');
   }
 
   @override

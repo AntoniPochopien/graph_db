@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <cstdio>
 
 using namespace std;
 using namespace graphdb;
@@ -18,15 +19,18 @@ Storage::Storage(const string &basePath)
       EDGES_BASE_PATH(fs::path(basePath) / "edges")
 {
     // Logowanie rozpoczęcia inicjalizacji
-    cerr << "Storage constructor: Initializing storage at base path: " << basePath << "\n";
+    printf("Storage constructor: Initializing storage at base path: %s\n", basePath.c_str());
+    fflush(stdout);
 
     try {
         if (!fs::exists(NODES_BASE_PATH)) {
-            cerr << "Storage constructor: Creating nodes directory: " << NODES_BASE_PATH << "\n";
+            printf("Storage constructor: Creating nodes directory: %s\n", NODES_BASE_PATH.c_str());
+            fflush(stdout);
             fs::create_directories(NODES_BASE_PATH);
         }
         if (!fs::exists(EDGES_BASE_PATH)) {
-            cerr << "Storage constructor: Creating edges directory: " << EDGES_BASE_PATH << "\n";
+            printf("Storage constructor: Creating edges directory: %s\n", EDGES_BASE_PATH.c_str());
+            fflush(stdout);
             fs::create_directories(EDGES_BASE_PATH);
         }
 
@@ -45,24 +49,28 @@ Storage::Storage(const string &basePath)
                             if (idx > static_cast<size_t>(lastIdx))
                                 lastIdx = static_cast<int>(idx);
                         }
-                        catch (...) { cerr << "Warning: bad filename format in " << entry.path() << "\n"; }
+                        catch (...) { printf("Warning: bad filename format in %s\n", entry.path().string().c_str()); fflush(stdout); }
                     }
                 }
             } catch (const fs::filesystem_error& e) {
-                 cerr << "Storage constructor: FILESYSTEM ERROR during directory iteration: " << e.what() << "\n";
+                 printf("Storage constructor: FILESYSTEM ERROR during directory iteration: %s\n", e.what());
+                 fflush(stdout);
             }
            
 
             if (lastIdx < 0) lastIdx = 0;
-            cerr << "Storage constructor: Last index for " << prefix << " set to " << lastIdx << "\n";
+            printf("Storage constructor: Last index for %s set to %d\n", prefix.c_str(), lastIdx);
+            fflush(stdout);
         };
 
         initFolder(NODES_BASE_PATH, "nodes", lastNodeChunkIdx);
         initFolder(EDGES_BASE_PATH, "edges", lastEdgeChunkIdx);
-        cerr << "Storage constructor: Initialization finished successfully.\n";
+        printf("Storage constructor: Initialization finished successfully.\n");
+        fflush(stdout);
         
     } catch (const fs::filesystem_error& e) {
-        cerr << "Storage constructor: CRITICAL FILESYSTEM ERROR during setup: " << e.what() << "\n";
+        printf("Storage constructor: CRITICAL FILESYSTEM ERROR during setup: %s\n", e.what());
+        fflush(stdout);
         throw;
     }
 }
@@ -74,7 +82,8 @@ void Storage::saveNodeChunk(const vector<Node> &nodes)
         return;
         
     // Log start
-    std::cerr << "saveNodeChunk: Attempting to save " << nodes.size() << " nodes.\n";
+    printf("saveNodeChunk: Attempting to save %zu nodes.\n", nodes.size());
+    fflush(stdout);
 
     // 1. Filename for the next potential chunk
     fs::path nextFile = fs::path(NODES_BASE_PATH) / ("nodes_" + to_string(lastNodeChunkIdx + 1) + ".bin");
@@ -88,7 +97,8 @@ void Storage::saveNodeChunk(const vector<Node> &nodes)
         if (currentSize + newDataSize <= MAX_CHUNK_SIZE)
         {
             createNewChunk = false;
-            std::cerr << "saveNodeChunk: Appending to existing file: " << nextFile << "\n";
+            printf("saveNodeChunk: Appending to existing file: %s\n", nextFile.string().c_str());
+            fflush(stdout);
         }
     }
 
@@ -99,7 +109,8 @@ void Storage::saveNodeChunk(const vector<Node> &nodes)
         // 🚨 CRITICAL LOGIC FIX
         // Should use the new index (lastNodeChunkIdx), not the old one (lastNodeChunkIdx - 1).
         targetFile = fs::path(NODES_BASE_PATH) / ("nodes_" + to_string(lastNodeChunkIdx) + ".bin");
-        std::cerr << "saveNodeChunk: Creating NEW chunk with index " << lastNodeChunkIdx << ". File: " << targetFile << "\n";
+        printf("saveNodeChunk: Creating NEW chunk with index %d. File: %s\n", lastNodeChunkIdx, targetFile.string().c_str());
+        fflush(stdout);
     } else {
         targetFile = nextFile;
     }
@@ -110,11 +121,13 @@ void Storage::saveNodeChunk(const vector<Node> &nodes)
     // Using .is_open() for a precise check
     if (!out.is_open()) 
     {
-        std::cerr << "saveNodeChunk: CRITICAL ERROR - Cannot open file for writing: " << targetFile << ". Check permissions and path.\n";
+        printf("saveNodeChunk: CRITICAL ERROR - Cannot open file for writing: %s. Check permissions and path.\n", targetFile.string().c_str());
+        fflush(stdout);
         return;
     }
     
-    std::cerr << "saveNodeChunk: File opened successfully for " << (createNewChunk ? "TRUNCATE" : "APPEND") << " mode.\n";
+    printf("saveNodeChunk: File opened successfully for %s mode.\n", createNewChunk ? "TRUNCATE" : "APPEND");
+    fflush(stdout);
 
     if (!createNewChunk)
     {
@@ -126,7 +139,8 @@ void Storage::saveNodeChunk(const vector<Node> &nodes)
         size_t oldCount;
         ifstream in(targetFile, ios::binary);
         if (!in.read(reinterpret_cast<char *>(&oldCount), sizeof(oldCount))) {
-             std::cerr << "saveNodeChunk: Error reading old count from file.\n";
+             printf("saveNodeChunk: Error reading old count from file.\n");
+             fflush(stdout);
              return;
         }
         in.close();
@@ -196,8 +210,9 @@ void Storage::saveNodeChunk(const vector<Node> &nodes)
         out.close();
     }
     
-    // Replaced cout with cerr so logs are visible in Logcat
-    std::cerr << "saveNodeChunk: SUCCESS - Wrote " << nodes.size() << " nodes to " << targetFile << "\n";
+    // Using printf for better cross-platform logging
+    printf("saveNodeChunk: SUCCESS - Wrote %zu nodes to %s\n", nodes.size(), targetFile.string().c_str());
+    fflush(stdout);
 }
 
 // ====================== Save edges chunk ======================
@@ -208,7 +223,8 @@ void Storage::saveEdgeChunk(const vector<Edge> &edges)
     ofstream out(filepath, ios::binary);
     if (!out)
     {
-        cerr << "Cannot open file for writing edges: " << filepath << "\n";
+        printf("saveEdgeChunk: Cannot open file for writing edges: %s\n", filepath.string().c_str());
+        fflush(stdout);
         return;
     }
 
@@ -243,7 +259,8 @@ void Storage::saveEdgeChunk(const vector<Edge> &edges)
     }
 
     out.close();
-    cout << "Saved " << edgeCount << " edges to " << filepath << "\n";
+    printf("saveEdgeChunk: Saved %zu edges to %s\n", edgeCount, filepath.string().c_str());
+    fflush(stdout);
 }
 
 // ====================== ESTIMATE NODES SIZE ======================
@@ -370,7 +387,8 @@ void Storage::buildNodeIndex()
 
     if (!exists(folder))
     {
-        cerr << "Folder does not exist: " << folder << "\n";
+        printf("buildNodeIndex: Folder does not exist: %s\n", folder.string().c_str());
+        fflush(stdout);
         return;
     }
 
@@ -382,7 +400,8 @@ void Storage::buildNodeIndex()
         ifstream in(entry.path(), ios::binary);
         if (!in)
         {
-            cerr << "Cannot open file: " << entry.path() << "\n";
+            printf("buildNodeIndex: Cannot open file: %s\n", entry.path().string().c_str());
+            fflush(stdout);
             continue;
         }
 
@@ -420,7 +439,8 @@ void Storage::buildNodeIndex()
         in.close();
     }
 
-    cout << "Built node index for " << nodeIndex.size() << " NodeIDs\n";
+    printf("Built node index for %zu NodeIDs\n", nodeIndex.size());
+    fflush(stdout);
 }
 
 // ====================== BUILD EDGE INDEX ======================
@@ -432,7 +452,8 @@ void Storage::buildEdgeIndex()
 
     if (!exists(folder))
     {
-        cerr << "Folder does not exist: " << folder << "\n";
+        printf("buildEdgeIndex: Folder does not exist: %s\n", folder.string().c_str());
+        fflush(stdout);
         return;
     }
 
@@ -444,7 +465,8 @@ void Storage::buildEdgeIndex()
         ifstream in(entry.path(), ios::binary);
         if (!in)
         {
-            cerr << "Cannot open file: " << entry.path() << "\n";
+            printf("buildEdgeIndex: Cannot open file: %s\n", entry.path().string().c_str());
+            fflush(stdout);
             continue;
         }
 
@@ -491,5 +513,6 @@ void Storage::buildEdgeIndex()
         in.close();
     }
 
-    cout << "Built edge index for " << edgeIndex.size() << " source nodes\n";
+    printf("Built edge index for %zu source nodes\n", edgeIndex.size());
+    fflush(stdout);
 }

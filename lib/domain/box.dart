@@ -52,14 +52,12 @@ class Box {
     try {
       final dir = await getApplicationDocumentsDirectory();
       final dbPath = '${dir.path}/test';
-      print('tutaj');
       final nodesDir = Directory('$dbPath/nodes');
       print('Nodes directory path: ${nodesDir.path}');
 
       if (await nodesDir.exists()) {
         final files = await nodesDir.list().toList();
         print('Files in "nodes" directory (Proof of save):');
-        // 🚨 Jeśli ten log jest PUSTY, oznacza to błąd w Storage::saveNodeChunk w C++
         for (var file in files) {
           print('  - ${file.path.split('/').last}');
         }
@@ -77,8 +75,11 @@ class Box {
     final resultPtr = _bindings.graphdb_load_node(_handle, ptr);
     malloc.free(ptr);
 
-    if (resultPtr == ffi.nullptr) return null;
-    final result = resultPtr.toString();
+    if (resultPtr == ffi.nullptr) {
+      print('loadNode: Received nullptr from C++ for nodeId: $nodeId');
+      return null;
+    }
+    final result = resultPtr.cast<Utf8>().toDartString();
     _bindings.graphdb_free_string(resultPtr);
     return result;
   }
