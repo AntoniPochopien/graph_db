@@ -1,9 +1,8 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'dart:async';
 
 import 'package:graph_db/graph_db.dart';
+import 'package:graph_db_example/user_model.dart';
 
 void main() {
   runApp(const MyApp());
@@ -28,11 +27,19 @@ class _MyAppState extends State<MyApp> {
 
   Future<void> x() async {
     _box = await Box.init('test');
-    _box.saveNodes(jsonEncode([
-      {'id': "1", 'properties': {'test': 'test'}}
-    ]));
-    final x =_box.loadNode("1");
-    print('fds: $x');
+    final user = UserModel(id: 'test', age: 10, username: 'super name');
+    await _box.saveNodes(user);
+    final x = _box.loadNode<UserModel>(
+      "hkjh",
+      serializer: UserModelFactory().fromJson,
+    );
+    if (x == null) {
+      print('Node not found with id: test');
+    } else {
+      print(x.id);
+      print(x.username);
+      print(x.age);
+    }
   }
 
   @override

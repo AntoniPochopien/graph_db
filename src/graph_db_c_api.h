@@ -15,6 +15,9 @@ Box* graphdb_init(const char* boxName);
 void graphdb_save_nodes(Box* box, const char* jsonData);
 void graphdb_save_edges(Box* box, const char* jsonData);
 
+// Delete a node by ID
+void graphdb_delete_node(Box* box, const char* nodeId);
+
 // Load a single node by ID (returns malloc'ed string, free with graphdb_free_string)
 const char* graphdb_load_node(Box* box, const char* nodeId);
 

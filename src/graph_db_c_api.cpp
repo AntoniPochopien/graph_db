@@ -134,6 +134,33 @@ void graphdb_save_edges(Box* box, const char* jsonData)
     }
 }
 
+void graphdb_delete_node(Box* box, const char* nodeId)
+{
+    if (!box || !nodeId) {
+        printf("graphdb_delete_node: Error - box or nodeId is NULL.\n");
+        fflush(stdout);
+        return;
+    }
+
+    try
+    {
+        box->storage->deleteNode(string(nodeId));
+        box->storage->buildNodeIndex();
+        printf("graphdb_delete_node: Successfully deleted node: %s\n", nodeId);
+        fflush(stdout);
+    }
+    catch (const std::exception& e)
+    {
+        printf("graphdb_delete_node: ERROR - Exception caught: %s\n", e.what());
+        fflush(stdout);
+    }
+    catch (...)
+    {
+        printf("graphdb_delete_node: ERROR - Unknown exception caught.\n");
+        fflush(stdout);
+    }
+}
+
 const char* graphdb_load_node(Box* box, const char* nodeId)
 {
     if (!box || !nodeId) {

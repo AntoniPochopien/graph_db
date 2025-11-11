@@ -75,6 +75,148 @@ Storage::Storage(const string &basePath)
     }
 }
 
+// ====================== DELETE NODE ======================
+void Storage::deleteNode(const string &nodeId)
+{
+    auto it = nodeIndex.find(nodeId);
+    if (it == nodeIndex.end())
+    {
+        // Node doesn't exist, nothing to delete
+        printf("deleteNode: Node %s not found in index, skipping deletion.\n", nodeId.c_str());
+        fflush(stdout);
+        return;
+    }
+
+    const string &filePath = it->second.first;
+    
+    printf("deleteNode: Attempting to delete node %s from file %s\n", nodeId.c_str(), filePath.c_str());
+    fflush(stdout);
+    
+    // Read the entire file
+    ifstream in(filePath, ios::binary);
+    if (!in)
+    {
+        printf("deleteNode: Cannot open file for reading: %s\n", filePath.c_str());
+        fflush(stdout);
+        return;
+    }
+
+    size_t nodeCount;
+    if (!in.read(reinterpret_cast<char *>(&nodeCount), sizeof(nodeCount)))
+    {
+        printf("deleteNode: Error reading node count from file: %s\n", filePath.c_str());
+        fflush(stdout);
+        in.close();
+        return;
+    }
+
+    vector<Node> nodes;
+    size_t offset = sizeof(nodeCount);
+
+    // Read all nodes except the one to delete
+    for (size_t i = 0; i < nodeCount; ++i)
+    {
+        size_t idLen;
+        size_t nodeStartOffset = offset;
+        if (!in.read(reinterpret_cast<char *>(&idLen), sizeof(idLen)))
+        {
+            printf("deleteNode: Error reading id length at offset %zu\n", offset);
+            fflush(stdout);
+            break;
+        }
+
+        string id(idLen, '\0');
+        if (!in.read(&id[0], idLen))
+        {
+            printf("deleteNode: Error reading id at offset %zu\n", offset);
+            fflush(stdout);
+            break;
+        }
+
+        size_t propCount;
+        if (!in.read(reinterpret_cast<char *>(&propCount), sizeof(propCount)))
+        {
+            printf("deleteNode: Error reading property count for node %s\n", id.c_str());
+            fflush(stdout);
+            break;
+        }
+
+        PropertyMap properties;
+        for (size_t j = 0; j < propCount; ++j)
+        {
+            size_t klen;
+            if (!in.read(reinterpret_cast<char *>(&klen), sizeof(klen)))
+            {
+                printf("deleteNode: Error reading key length for property %zu of node %s\n", j, id.c_str());
+                fflush(stdout);
+                break;
+            }
+            string key(klen, '\0');
+            if (!in.read(&key[0], klen))
+            {
+                printf("deleteNode: Error reading key for property %zu of node %s\n", j, id.c_str());
+                fflush(stdout);
+                break;
+            }
+
+            PropertyValue val = PropertyValue::deserialize(in);
+            properties[key] = val;
+        }
+
+        // Only keep nodes that are NOT being deleted
+        if (id != nodeId)
+        {
+            Node node;
+            node.id = id;
+            node.properties = properties;
+            nodes.push_back(node);
+        }
+        else
+        {
+            printf("deleteNode: Found node %s to delete, skipping it.\n", id.c_str());
+            fflush(stdout);
+        }
+
+        offset = in.tellg();
+    }
+    in.close();
+
+    // Rewrite the file with remaining nodes
+    ofstream out(filePath, ios::binary | ios::trunc);
+    if (!out.is_open())
+    {
+        printf("deleteNode: Cannot open file for writing: %s\n", filePath.c_str());
+        fflush(stdout);
+        return;
+    }
+
+    size_t newCount = nodes.size();
+    out.write(reinterpret_cast<const char *>(&newCount), sizeof(newCount));
+
+    for (const auto &node : nodes)
+    {
+        size_t len = node.id.size();
+        out.write(reinterpret_cast<const char *>(&len), sizeof(len));
+        out.write(node.id.c_str(), len);
+
+        size_t propCount = node.properties.size();
+        out.write(reinterpret_cast<const char *>(&propCount), sizeof(propCount));
+
+        for (const auto &[key, value] : node.properties)
+        {
+            size_t klen = key.size();
+            out.write(reinterpret_cast<const char *>(&klen), sizeof(klen));
+            out.write(key.c_str(), klen);
+
+            value.serialize(out);
+        }
+    }
+    out.close();
+
+    printf("deleteNode: Successfully deleted node %s from %s. Remaining nodes: %zu\n", nodeId.c_str(), filePath.c_str(), newCount);
+    fflush(stdout);
+}
+
 // ====================== SAVE NODE CHUNK ======================
 void Storage::saveNodeChunk(const vector<Node> &nodes)
 {
@@ -84,6 +226,20 @@ void Storage::saveNodeChunk(const vector<Node> &nodes)
     // Log start
     printf("saveNodeChunk: Attempting to save %zu nodes.\n", nodes.size());
     fflush(stdout);
+    
+    // Delete any existing nodes with the same IDs to avoid duplicates and wasted space
+    for (const auto &node : nodes)
+    {
+        if (nodeIndex.find(node.id) != nodeIndex.end())
+        {
+            printf("saveNodeChunk: Node %s already exists, deleting old version first.\n", node.id.c_str());
+            fflush(stdout);
+            deleteNode(node.id);
+        }
+    }
+    
+    // Rebuild index after deletions to ensure it's up to date
+    buildNodeIndex();
 
     // 1. Filename for the next potential chunk
     fs::path nextFile = fs::path(NODES_BASE_PATH) / ("nodes_" + to_string(lastNodeChunkIdx + 1) + ".bin");

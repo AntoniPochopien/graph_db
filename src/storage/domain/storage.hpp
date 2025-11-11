@@ -20,6 +20,7 @@ namespace graphdb
         void saveNodeChunk(const vector<Node> &nodes);
         void saveEdgeChunk(const vector<Edge> &edges);
 
+        void deleteNode(const string &nodeId);
         Node loadNodeById(const string &nodeId);
         vector<Edge> loadEdgesFromNode(const string &nodeId);
 

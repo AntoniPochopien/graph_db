@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'dart:ffi' as ffi;
 import 'dart:io' show Directory, Platform;
 import 'package:ffi/ffi.dart';
+import 'package:graph_db/domain/node.dart';
 import 'package:graph_db/graph_db_bindings_generated.dart' as gdb;
 import 'package:path_provider/path_provider.dart';
 
@@ -19,13 +21,12 @@ final ffi.DynamicLibrary _dylib = () {
   throw UnsupportedError('Unknown platform: ${Platform.operatingSystem}');
 }();
 
-final _bindings = gdb.GraphDbBindings(_dylib);
-
 class Box {
   final gdb.GraphDbBindings _bindings;
   final ffi.Pointer<gdb.Box> _handle;
+  final String _boxName;
 
-  Box._(this._bindings, this._handle);
+  Box._(this._bindings, this._handle, this._boxName);
 
   static Future<Box> init(String boxName) async {
     final dir = await getApplicationDocumentsDirectory();
@@ -42,16 +43,18 @@ class Box {
     if (handle == ffi.nullptr) {
       throw Exception('Failed to initialize GraphDB at path $dbPath');
     }
-    return Box._(bindings, handle);
+    return Box._(bindings, handle, boxName);
   }
 
-  void saveNodes(String jsonData) async {
+  Future<void> saveNodes(Node node) async {
+    // C++ code expects a JSON array of nodes, not a single object
+    final jsonData = jsonEncode([node.toJson()]);
     final ptr = jsonData.toNativeUtf8().cast<ffi.Char>();
     _bindings.graphdb_save_nodes(_handle, ptr);
 
     try {
       final dir = await getApplicationDocumentsDirectory();
-      final dbPath = '${dir.path}/test';
+      final dbPath = '${dir.path}/$_boxName';
       final nodesDir = Directory('$dbPath/nodes');
       print('Nodes directory path: ${nodesDir.path}');
 
@@ -70,17 +73,26 @@ class Box {
     malloc.free(ptr);
   }
 
-  String? loadNode(String nodeId) {
+  T? loadNode<T>(String nodeId, {required T Function(Map<String, dynamic>) serializer}) {
     final ptr = nodeId.toNativeUtf8().cast<ffi.Char>();
     final resultPtr = _bindings.graphdb_load_node(_handle, ptr);
     malloc.free(ptr);
 
     if (resultPtr == ffi.nullptr) {
-      print('loadNode: Received nullptr from C++ for nodeId: $nodeId');
+      print('loadNode: Node not found with id: $nodeId');
       return null;
     }
-    final result = resultPtr.cast<Utf8>().toDartString();
-    _bindings.graphdb_free_string(resultPtr);
-    return result;
+    
+    try {
+      final result = resultPtr.cast<Utf8>().toDartString();
+      final jsonData = jsonDecode(result) as Map<String, dynamic>;
+      return serializer(jsonData);
+    } catch (e) {
+      print('loadNode: Error deserializing node with id $nodeId: $e');
+      return null;
+    } finally {
+      // Always free the pointer, even if an exception occurs
+      _bindings.graphdb_free_string(resultPtr);
+    }
   }
 }
