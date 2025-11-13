@@ -121,16 +121,34 @@ void graphdb_save_nodes(Box* box, const char* jsonData)
 
 void graphdb_save_edges(Box* box, const char* jsonData)
 {
-    if (!box || !jsonData)
+    if (!box || !jsonData) {
+        printf("graphdb_save_edges: Error - box or jsonData is NULL.\n");
+        fflush(stdout);
         return;
+    }
 
     try
     {
         vector<Edge> edges = parse_edges_from_json(jsonData);
+        printf("graphdb_save_edges: Successfully parsed %zu edges.\n", edges.size());
+        fflush(stdout);
         box->storage->saveEdgeChunk(edges);
+        printf("graphdb_save_edges: saveEdgeChunk finished successfully.\n");
+        fflush(stdout);
+        // Rebuild index after saving edges so they can be loaded
+        box->storage->buildEdgeIndex();
+        printf("graphdb_save_edges: Edge index rebuilt.\n");
+        fflush(stdout);
+    }
+    catch (const std::exception& e)
+    {
+        printf("graphdb_save_edges: CRITICAL ERROR - Exception caught: %s\n", e.what());
+        fflush(stdout);
     }
     catch (...)
     {
+        printf("graphdb_save_edges: CRITICAL ERROR - Unknown exception caught.\n");
+        fflush(stdout);
     }
 }
 

@@ -374,48 +374,158 @@ void Storage::saveNodeChunk(const vector<Node> &nodes)
 // ====================== Save edges chunk ======================
 void Storage::saveEdgeChunk(const vector<Edge> &edges)
 {
-    fs::path filepath = fs::path(EDGES_BASE_PATH) / ("edges_" + to_string(lastEdgeChunkIdx) + ".bin");
-
-    ofstream out(filepath, ios::binary);
-    if (!out)
-    {
-        printf("saveEdgeChunk: Cannot open file for writing edges: %s\n", filepath.string().c_str());
-        fflush(stdout);
+    if (edges.empty())
         return;
-    }
+        
+    // Log start
+    printf("saveEdgeChunk: Attempting to save %zu edges.\n", edges.size());
+    fflush(stdout);
 
-    size_t edgeCount = edges.size();
-    out.write(reinterpret_cast<const char *>(&edgeCount), sizeof(edgeCount));
+    // 1. Filename for the next potential chunk
+    fs::path nextFile = fs::path(EDGES_BASE_PATH) / ("edges_" + to_string(lastEdgeChunkIdx + 1) + ".bin");
 
-    for (const auto &e : edges)
+    bool createNewChunk = true;
+    
+    if (fs::exists(nextFile))
     {
-        // from
-        size_t lenFrom = e.from.size();
-        out.write(reinterpret_cast<const char *>(&lenFrom), sizeof(lenFrom));
-        out.write(e.from.c_str(), lenFrom);
-
-        // to
-        size_t lenTo = e.to.size();
-        out.write(reinterpret_cast<const char *>(&lenTo), sizeof(lenTo));
-        out.write(e.to.c_str(), lenTo);
-
-        // weight
-        out.write(reinterpret_cast<const char *>(&e.weight), sizeof(e.weight));
-
-        // properties
-        size_t propCount = e.properties.size();
-        out.write(reinterpret_cast<const char *>(&propCount), sizeof(propCount));
-        for (const auto &[k, v] : e.properties)
+        auto currentSize = fs::file_size(nextFile);
+        // Estimate size: each edge has from, to, weight, and properties
+        size_t estimatedSize = 0;
+        for (const auto &e : edges)
         {
-            size_t klen = k.size();
-            out.write(reinterpret_cast<const char *>(&klen), sizeof(klen));
-            out.write(k.c_str(), klen);
-            v.serialize(out);
+            estimatedSize += sizeof(size_t) + e.from.size();
+            estimatedSize += sizeof(size_t) + e.to.size();
+            estimatedSize += sizeof(double); // weight
+            estimatedSize += sizeof(size_t); // prop count
+            for (const auto &[k, v] : e.properties)
+            {
+                estimatedSize += sizeof(size_t) + k.size();
+                // Rough estimate for property value (at least 1 byte for type + some data)
+                estimatedSize += 1 + sizeof(size_t) + 10; // rough estimate
+            }
+        }
+        
+        if (currentSize + estimatedSize <= MAX_CHUNK_SIZE)
+        {
+            createNewChunk = false;
+            printf("saveEdgeChunk: Appending to existing file: %s\n", nextFile.string().c_str());
+            fflush(stdout);
         }
     }
 
-    out.close();
-    printf("saveEdgeChunk: Saved %zu edges to %s\n", edgeCount, filepath.string().c_str());
+    fs::path targetFile;
+    if (createNewChunk)
+    {
+        lastEdgeChunkIdx++;
+        targetFile = fs::path(EDGES_BASE_PATH) / ("edges_" + to_string(lastEdgeChunkIdx) + ".bin");
+        printf("saveEdgeChunk: Creating NEW chunk with index %d. File: %s\n", lastEdgeChunkIdx, targetFile.string().c_str());
+        fflush(stdout);
+    } else {
+        targetFile = nextFile;
+    }
+
+    // 2. File opening
+    ofstream out(targetFile, ios::binary | (createNewChunk ? ios::trunc : ios::app));
+    
+    if (!out.is_open()) 
+    {
+        printf("saveEdgeChunk: CRITICAL ERROR - Cannot open file for writing: %s. Check permissions and path.\n", targetFile.string().c_str());
+        fflush(stdout);
+        return;
+    }
+    
+    printf("saveEdgeChunk: File opened successfully for %s mode.\n", createNewChunk ? "TRUNCATE" : "APPEND");
+    fflush(stdout);
+
+    if (!createNewChunk)
+    {
+        // 3. APPEND Logic
+        size_t oldCount;
+        ifstream in(targetFile, ios::binary);
+        if (!in.read(reinterpret_cast<char *>(&oldCount), sizeof(oldCount))) {
+             printf("saveEdgeChunk: Error reading old count from file.\n");
+             fflush(stdout);
+             in.close();
+             out.close();
+             return;
+        }
+        in.close();
+
+        size_t newCount = oldCount + edges.size();
+        
+        // Open the file for reading and writing
+        fstream updateCount(targetFile, ios::binary | ios::in | ios::out);
+        
+        // Write the new count at the beginning of the file
+        updateCount.write(reinterpret_cast<const char *>(&newCount), sizeof(newCount));
+        
+        // Seek to the end of the file to append new edges
+        updateCount.seekp(0, ios::end); 
+        
+        for (const auto &e : edges)
+        {
+            // from
+            size_t lenFrom = e.from.size();
+            updateCount.write(reinterpret_cast<const char *>(&lenFrom), sizeof(lenFrom));
+            updateCount.write(e.from.c_str(), lenFrom);
+
+            // to
+            size_t lenTo = e.to.size();
+            updateCount.write(reinterpret_cast<const char *>(&lenTo), sizeof(lenTo));
+            updateCount.write(e.to.c_str(), lenTo);
+
+            // weight
+            updateCount.write(reinterpret_cast<const char *>(&e.weight), sizeof(e.weight));
+
+            // properties
+            size_t propCount = e.properties.size();
+            updateCount.write(reinterpret_cast<const char *>(&propCount), sizeof(propCount));
+            for (const auto &[k, v] : e.properties)
+            {
+                size_t klen = k.size();
+                updateCount.write(reinterpret_cast<const char *>(&klen), sizeof(klen));
+                updateCount.write(k.c_str(), klen);
+                v.serialize(updateCount);
+            }
+        }
+        updateCount.close();
+    }
+    else
+    {
+        // 4. TRUNCATE Logic (new file)
+        size_t edgeCount = edges.size();
+        out.write(reinterpret_cast<const char *>(&edgeCount), sizeof(edgeCount));
+
+        for (const auto &e : edges)
+        {
+            // from
+            size_t lenFrom = e.from.size();
+            out.write(reinterpret_cast<const char *>(&lenFrom), sizeof(lenFrom));
+            out.write(e.from.c_str(), lenFrom);
+
+            // to
+            size_t lenTo = e.to.size();
+            out.write(reinterpret_cast<const char *>(&lenTo), sizeof(lenTo));
+            out.write(e.to.c_str(), lenTo);
+
+            // weight
+            out.write(reinterpret_cast<const char *>(&e.weight), sizeof(e.weight));
+
+            // properties
+            size_t propCount = e.properties.size();
+            out.write(reinterpret_cast<const char *>(&propCount), sizeof(propCount));
+            for (const auto &[k, v] : e.properties)
+            {
+                size_t klen = k.size();
+                out.write(reinterpret_cast<const char *>(&klen), sizeof(klen));
+                out.write(k.c_str(), klen);
+                v.serialize(out);
+            }
+        }
+        out.close();
+    }
+    
+    printf("saveEdgeChunk: SUCCESS - Wrote %zu edges to %s\n", edges.size(), targetFile.string().c_str());
     fflush(stdout);
 }
 

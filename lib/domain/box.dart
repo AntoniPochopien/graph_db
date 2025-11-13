@@ -3,6 +3,7 @@ import 'dart:ffi' as ffi;
 import 'dart:io' show Directory, Platform;
 import 'package:ffi/ffi.dart';
 import 'package:graph_db/domain/node.dart';
+import 'package:graph_db/domain/edge.dart';
 import 'package:graph_db/graph_db_bindings_generated.dart' as gdb;
 import 'package:path_provider/path_provider.dart';
 
@@ -93,6 +94,41 @@ class Box {
     } finally {
       // Always free the pointer, even if an exception occurs
       _bindings.graphdb_free_string(resultPtr);
+    }
+  }
+
+  Future<void> saveEdges(Edge edge) async {
+    // C++ code expects a JSON array of edges, not a single object
+    final jsonData = jsonEncode([edge.toJson()]);
+    final ptr = jsonData.toNativeUtf8().cast<ffi.Char>();
+    _bindings.graphdb_save_edges(_handle, ptr);
+    malloc.free(ptr);
+  }
+
+  List<T> loadEdges<T>(
+    String fromNodeId, {
+    required T Function(Map<String, dynamic>) serializer,
+  }) {
+    final ptr = fromNodeId.toNativeUtf8().cast<ffi.Char>();
+    final resultPtr = _bindings.graphdb_load_edges(_handle, ptr);
+    malloc.free(ptr);
+
+    if (resultPtr == ffi.nullptr) {
+      print('loadEdges: No edges found for node id: $fromNodeId');
+      return [];
+    }
+
+    try {
+      final result = resultPtr.cast<Utf8>().toDartString();
+      _bindings.graphdb_free_string(resultPtr);
+      final jsonData = jsonDecode(result) as List<dynamic>;
+      return jsonData
+          .map((item) => serializer(item as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      _bindings.graphdb_free_string(resultPtr);
+      print('loadEdges: Error deserializing edges for node id $fromNodeId: $e');
+      return [];
     }
   }
 }
