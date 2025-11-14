@@ -1,6 +1,7 @@
 import 'dart:convert';
+import 'dart:developer';
 import 'dart:ffi' as ffi;
-import 'dart:io' show Directory, Platform;
+import 'dart:io' show Platform;
 import 'package:ffi/ffi.dart';
 import 'package:graph_db/domain/node.dart';
 import 'package:graph_db/domain/edge.dart';
@@ -25,9 +26,8 @@ final ffi.DynamicLibrary _dylib = () {
 class Box {
   final gdb.GraphDbBindings _bindings;
   final ffi.Pointer<gdb.Box> _handle;
-  final String _boxName;
 
-  Box._(this._bindings, this._handle, this._boxName);
+  Box._(this._bindings, this._handle);
 
   static Future<Box> init(String boxName) async {
     final dir = await getApplicationDocumentsDirectory();
@@ -44,7 +44,7 @@ class Box {
     if (handle == ffi.nullptr) {
       throw Exception('Failed to initialize GraphDB at path $dbPath');
     }
-    return Box._(bindings, handle, boxName);
+    return Box._(bindings, handle);
   }
 
   Future<void> saveNodes(Node node) async {
@@ -53,24 +53,6 @@ class Box {
     final ptr = jsonData.toNativeUtf8().cast<ffi.Char>();
     _bindings.graphdb_save_nodes(_handle, ptr);
 
-    try {
-      final dir = await getApplicationDocumentsDirectory();
-      final dbPath = '${dir.path}/$_boxName';
-      final nodesDir = Directory('$dbPath/nodes');
-      print('Nodes directory path: ${nodesDir.path}');
-
-      if (await nodesDir.exists()) {
-        final files = await nodesDir.list().toList();
-        print('Files in "nodes" directory (Proof of save):');
-        for (var file in files) {
-          print('  - ${file.path.split('/').last}');
-        }
-      } else {
-        print('Nodes directory not found. CRITICAL ERROR.');
-      }
-    } catch (e) {
-      print('Error listing directory content: $e');
-    }
     malloc.free(ptr);
   }
 
@@ -80,7 +62,7 @@ class Box {
     malloc.free(ptr);
 
     if (resultPtr == ffi.nullptr) {
-      print('loadNode: Node not found with id: $nodeId');
+      log('loadNode: Node not found with id: $nodeId');
       return null;
     }
     
@@ -89,7 +71,7 @@ class Box {
       final jsonData = jsonDecode(result) as Map<String, dynamic>;
       return serializer(jsonData);
     } catch (e) {
-      print('loadNode: Error deserializing node with id $nodeId: $e');
+      log('loadNode: Error deserializing node with id $nodeId: $e');
       return null;
     } finally {
       // Always free the pointer, even if an exception occurs
@@ -114,7 +96,7 @@ class Box {
     malloc.free(ptr);
 
     if (resultPtr == ffi.nullptr) {
-      print('loadEdges: No edges found for node id: $fromNodeId');
+      log('loadEdges: No edges found for node id: $fromNodeId');
       return [];
     }
 
@@ -127,7 +109,7 @@ class Box {
           .toList();
     } catch (e) {
       _bindings.graphdb_free_string(resultPtr);
-      print('loadEdges: Error deserializing edges for node id $fromNodeId: $e');
+      log('loadEdges: Error deserializing edges for node id $fromNodeId: $e');
       return [];
     }
   }
