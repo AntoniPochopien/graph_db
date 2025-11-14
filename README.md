@@ -1,92 +1,164 @@
 # graph_db
 
-A new Flutter FFI plugin project.
+A Flutter FFI plugin for graph database functionality, enabling you to store and query graph structures (nodes and edges) in your Flutter applications.
+
+## ⚠️ Alpha Version
+
+This package is currently in **alpha** status. The API may change in future versions. Use in production environments is not recomended.
+
+## Platform Support
+
+This package is designed to work on the following platforms:
+- ✅ **Android** (tested)
+- ✅ **iOS** (planned)
+- ✅ **Linux** (planned)
+- ✅ **macOS** (planned)
+- ✅ **Windows** (planned)
+- ❌ **Web** (not supported)
+
+**Note:** Currently, only Android has been tested. Support for other platforms (excluding web) is planned but not yet verified.
+
+## Features
+
+- Store and retrieve graph nodes
+- Create and query edges between nodes
+- Persistent storage using native C++ implementation
+- Type-safe API with Dart generics
+- JSON serialization support
 
 ## Getting Started
 
-This project is a starting point for a Flutter
-[FFI plugin](https://flutter.dev/to/ffi-package),
-a specialized package that includes native code directly invoked with Dart FFI.
+### Installation
 
-## Project structure
-
-This template uses the following structure:
-
-* `src`: Contains the native source code, and a CmakeFile.txt file for building
-  that source code into a dynamic library.
-
-* `lib`: Contains the Dart code that defines the API of the plugin, and which
-  calls into the native code using `dart:ffi`.
-
-* platform folders (`android`, `ios`, `windows`, etc.): Contains the build files
-  for building and bundling the native code library with the platform application.
-
-## Building and bundling native code
-
-The `pubspec.yaml` specifies FFI plugins as follows:
+Add `graph_db` to your `pubspec.yaml`:
 
 ```yaml
-  plugin:
-    platforms:
-      some_platform:
-        ffiPlugin: true
+dependencies:
+  graph_db: ^0.0.1
 ```
 
-This configuration invokes the native build for the various target platforms
-and bundles the binaries in Flutter applications using these FFI plugins.
+### Usage
 
-This can be combined with dartPluginClass, such as when FFI is used for the
-implementation of one platform in a federated plugin:
+#### 1. Define your Node and Edge classes
 
-```yaml
-  plugin:
-    implements: some_other_plugin
-    platforms:
-      some_platform:
-        dartPluginClass: SomeClass
-        ffiPlugin: true
+```dart
+import 'package:graph_db/domain/node.dart';
+import 'package:graph_db/domain/edge.dart';
+
+class PersonNode extends Node {
+  final String name;
+  final int age;
+
+  PersonNode({
+    required String id,
+    required this.name,
+    required this.age,
+  }) : super(id: id);
+
+  @override
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'age': age,
+    };
+  }
+}
+
+class FriendshipEdge extends Edge {
+  @override
+  final String from;
+  @override
+  final String to;
+  @override
+  final double weight;
+
+  FriendshipEdge({
+    required this.from,
+    required this.to,
+    this.weight = 1.0,
+  });
+
+  @override
+  Map<String, dynamic> toJson() {
+    return {
+      'from': from,
+      'to': to,
+      'weight': weight,
+    };
+  }
+}
 ```
 
-A plugin can have both FFI and method channels:
+#### 2. Initialize the database
 
-```yaml
-  plugin:
-    platforms:
-      some_platform:
-        pluginClass: SomeName
-        ffiPlugin: true
+```dart
+import 'package:graph_db/domain/box.dart';
+
+final box = await Box.init('my_graph_db');
 ```
 
-The native build systems that are invoked by FFI (and method channel) plugins are:
+#### 3. Save nodes and edges
 
-* For Android: Gradle, which invokes the Android NDK for native builds.
-  * See the documentation in android/build.gradle.
-* For iOS and MacOS: Xcode, via CocoaPods.
-  * See the documentation in ios/graph_db.podspec.
-  * See the documentation in macos/graph_db.podspec.
-* For Linux and Windows: CMake.
-  * See the documentation in linux/CMakeLists.txt.
-  * See the documentation in windows/CMakeLists.txt.
+```dart
+// Save nodes
+final alice = PersonNode(id: '1', name: 'Alice', age: 30);
+final bob = PersonNode(id: '2', name: 'Bob', age: 25);
 
-## Binding to native code
+await box.saveNodes(alice);
+await box.saveNodes(bob);
 
-To use the native code, bindings in Dart are needed.
-To avoid writing these by hand, they are generated from the header file
-(`src/graph_db.h`) by `package:ffigen`.
-Regenerate the bindings by running `dart run ffigen --config ffigen.yaml`.
+// Save edges
+final friendship = FriendshipEdge(from: '1', to: '2', weight: 1.0);
+await box.saveEdges(friendship);
+```
 
-## Invoking native code
+#### 4. Load nodes and edges
 
-Very short-running native functions can be directly invoked from any isolate.
-For example, see `sum` in `lib/graph_db.dart`.
+```dart
+// Load a node
+final person = box.loadNode<PersonNode>(
+  '1',
+  serializer: (json) => PersonNode(
+    id: json['id'] as String,
+    name: json['name'] as String,
+    age: json['age'] as int,
+  ),
+);
 
-Longer-running functions should be invoked on a helper isolate to avoid
-dropping frames in Flutter applications.
-For example, see `sumAsync` in `lib/graph_db.dart`.
+// Load edges from a node
+final edges = box.loadEdges<FriendshipEdge>(
+  '1',
+  serializer: (json) => FriendshipEdge(
+    from: json['from'] as String,
+    to: json['to'] as String,
+    weight: (json['weight'] as num).toDouble(),
+  ),
+);
+```
 
-## Flutter help
+## Project Structure
 
-For help getting started with Flutter, view our
-[online documentation](https://docs.flutter.dev), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+This plugin uses Flutter FFI to interact with native C++ code:
 
+* `src`: Contains the native C++ source code and CMakeLists.txt for building the dynamic library
+* `lib`: Contains the Dart code that defines the API and calls into native code using `dart:ffi`
+* Platform folders (`android`, `ios`, `windows`, etc.): Contains build files for bundling the native library
+
+## Building Native Code
+
+The native bindings are generated from the header file (`src/graph_db.h`) using `package:ffigen`.
+
+To regenerate the bindings:
+
+```bash
+dart run ffigen --config ffigen.yaml
+```
+
+## License
+
+This package is free and open source. See [LICENSE](LICENSE) file for details.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.

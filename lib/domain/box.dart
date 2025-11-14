@@ -23,12 +23,36 @@ final ffi.DynamicLibrary _dylib = () {
   throw UnsupportedError('Unknown platform: ${Platform.operatingSystem}');
 }();
 
+/// A graph database box that provides storage and retrieval of nodes and edges.
+///
+/// The [Box] class is the main interface for interacting with the graph database.
+/// It provides methods to save and load nodes and edges, enabling you to build
+/// and query graph structures in your Flutter application.
+///
+/// Example:
+/// ```dart
+/// final box = await Box.init('my_graph_db');
+/// await box.saveNodes(myNode);
+/// final node = box.loadNode('node_id', serializer: MyNode.fromJson);
+/// ```
 class Box {
   final gdb.GraphDbBindings _bindings;
   final ffi.Pointer<gdb.Box> _handle;
 
   Box._(this._bindings, this._handle);
 
+  /// Initializes a new graph database box with the specified name.
+  ///
+  /// The database will be stored in the application's documents directory
+  /// with the provided [boxName]. If a database with this name already exists,
+  /// it will be opened; otherwise, a new database will be created.
+  ///
+  /// Throws an [Exception] if the database initialization fails.
+  ///
+  /// Example:
+  /// ```dart
+  /// final box = await Box.init('my_graph');
+  /// ```
   static Future<Box> init(String boxName) async {
     final dir = await getApplicationDocumentsDirectory();
     final dbPath = '${dir.path}/$boxName';
@@ -47,6 +71,17 @@ class Box {
     return Box._(bindings, handle);
   }
 
+  /// Saves a node to the graph database.
+  ///
+  /// The [node] will be persisted to the database and can be retrieved later
+  /// using [loadNode]. The node must implement the [Node] interface and
+  /// provide a valid [Node.toJson] method.
+  ///
+  /// Example:
+  /// ```dart
+  /// final node = MyNode(id: '1', name: 'Alice');
+  /// await box.saveNodes(node);
+  /// ```
   Future<void> saveNodes(Node node) async {
     // C++ code expects a JSON array of nodes, not a single object
     final jsonData = jsonEncode([node.toJson()]);
@@ -56,6 +91,24 @@ class Box {
     malloc.free(ptr);
   }
 
+  /// Loads a node from the graph database by its ID.
+  ///
+  /// Returns the deserialized node if found, or `null` if no node with the
+  /// given [nodeId] exists in the database.
+  ///
+  /// The [serializer] function is used to convert the JSON data back into
+  /// your custom node type. It should match the structure of your node's
+  /// `fromJson` method.
+  ///
+  /// Example:
+  /// ```dart
+  /// final node = box.loadNode<MyNode>(
+  ///   'node_id',
+  ///   serializer: (json) => MyNode.fromJson(json),
+  /// );
+  /// ```
+  ///
+  /// Returns `null` if the node is not found or if deserialization fails.
   T? loadNode<T>(String nodeId, {required T Function(Map<String, dynamic>) serializer}) {
     final ptr = nodeId.toNativeUtf8().cast<ffi.Char>();
     final resultPtr = _bindings.graphdb_load_node(_handle, ptr);
@@ -79,6 +132,18 @@ class Box {
     }
   }
 
+  /// Saves an edge to the graph database.
+  ///
+  /// The [edge] represents a connection between two nodes and will be
+  /// persisted to the database. Edges can be retrieved using [loadEdges]
+  /// by querying from a specific node. The edge must implement the [Edge]
+  /// interface and provide a valid [Edge.toJson] method.
+  ///
+  /// Example:
+  /// ```dart
+  /// final edge = MyEdge(from: 'node1', to: 'node2', weight: 1.0);
+  /// await box.saveEdges(edge);
+  /// ```
   Future<void> saveEdges(Edge edge) async {
     // C++ code expects a JSON array of edges, not a single object
     final jsonData = jsonEncode([edge.toJson()]);
@@ -87,6 +152,24 @@ class Box {
     malloc.free(ptr);
   }
 
+  /// Loads all edges originating from a specific node.
+  ///
+  /// Returns a list of all edges that start from the node with the given
+  /// [fromNodeId]. If no edges are found, an empty list is returned.
+  ///
+  /// The [serializer] function is used to convert the JSON data back into
+  /// your custom edge type. It should match the structure of your edge's
+  /// `fromJson` method.
+  ///
+  /// Example:
+  /// ```dart
+  /// final edges = box.loadEdges<MyEdge>(
+  ///   'node_id',
+  ///   serializer: (json) => MyEdge.fromJson(json),
+  /// );
+  /// ```
+  ///
+  /// Returns an empty list if no edges are found or if deserialization fails.
   List<T> loadEdges<T>(
     String fromNodeId, {
     required T Function(Map<String, dynamic>) serializer,
