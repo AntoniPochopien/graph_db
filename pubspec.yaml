@@ -1,3 +1,4 @@
+repository: https://github.com/AntoniPochopien/graph_db.git
 name: graph_db
 description: "Flutter graph database plugin"
 version: 0.0.1
